@@ -18,6 +18,8 @@ app.add_middleware(
 
 app.include_router(webhooks.router)
 
+# TODO: Add more comprehensive error handling
+
 @app.get("/healthz")
 async def health_check():
     return {"status": "healthy", "service": "codexlens-api"}
