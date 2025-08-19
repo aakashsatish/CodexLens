@@ -48,7 +48,7 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
         if not db_pr:
             db_pr = PullRequest(
                 github_id=pr_data['id'],
-                number=pr_data['number'],
+                pr_number=pr_data['number'],
                 title=pr_data['title'],
                 repo_name=payload['repository']['full_name'],
                 state=pr_data['state'],
