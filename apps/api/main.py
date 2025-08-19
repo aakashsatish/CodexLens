@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apps.api.routes import webhooks
-from apps.api.databse import engine
+from apps.api.database import engine
 from apps.api.models import Base
 
 Base.metadata.create_all(bind=engine)
