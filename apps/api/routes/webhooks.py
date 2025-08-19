@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
-from sqlalchemy.orm import Session
-from apps.api.database import get_db
-from apps.api.models import PullRequest
-from apps.api.services.github import GitHubWebhookVerifier
-import json
+from typing import Dict, Any
 import os
+from dotenv import load_dotenv
+from apps.api.services.github import GitHubWebhookVerifier
 
+# Load environment variables
+load_dotenv('infra/.env')
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-# Initialize verifier
-verifier = GitHubWebhookVerifier(os.getenv('GITHUB_WEBHOOK_SECRET', ''))
+# Initialize verifier with the loaded secret
+webhook_secret = os.getenv('GITHUB_WEBHOOK_SECRET', '')
+print(f"Debug: Loaded webhook secret: {webhook_secret}")
+verifier = GitHubWebhookVerifier(webhook_secret)
 
 @router.post("/github")
 async def github_webhook(request: Request):
