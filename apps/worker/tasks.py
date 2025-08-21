@@ -2,9 +2,10 @@ from apps.worker.celery_app import celery_app
 from sqlalchemy.orm import Session
 from apps.api.database import SessionLocal
 from apps.api.models import PullRequest
-import logging
-from apps.api.services.static_analysis import StaticAnalyzer
 from apps.api.services.github_api import GitHubAPIClient
+from apps.api.services.static_analysis import StaticAnalyzer
+from typing import List, Dict
+import logging
 
 logger = logging.getLogger(__name__)
 

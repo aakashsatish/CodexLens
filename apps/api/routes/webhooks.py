@@ -7,6 +7,7 @@ from apps.api.database import get_db
 from apps.api.models import PullRequest
 from apps.api.services.github import GitHubWebhookVerifier
 from apps.worker.tasks import review_pull_request
+from apps.api.services.github_api import GitHubAPIClient
 
 # Load environment variables
 load_dotenv('infra/.env')
@@ -40,6 +41,9 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
     # Handle pull request events
     if event_type == 'pull_request':
         pr_data = payload['pull_request']
+
+        # Get installation ID from payload
+        installation_id = payload['installation']['id']
         
         # Create or update PR record
         db_pr = db.query(PullRequest).filter(
@@ -68,3 +72,18 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
         return {"status": "PR processed and review task scheduled"}
     
     return {"status": "webhook received"}
+
+@router.get("/test-github-auth")
+async def test_github_auth():
+    """Test GitHub authentication"""
+    try:
+        client = GitHubAPIClient()
+        jwt_token = client._generate_jwt()
+        return {
+            "status": "success",
+            "message": "Github API client initialized successfully",
+            "jwt_generated": bool(jwt_token),
+            "app_id": client.app_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) 
