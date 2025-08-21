@@ -8,4 +8,5 @@ alembic==1.12.1
 pydantic==2.5.0
 httpx==0.25.2
 python-dotenv==1.0.0
-cryptography==41.0.7
+cryptography==41.0.7celery==5.3.4
+redis==5.0.1
