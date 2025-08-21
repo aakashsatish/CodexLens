@@ -3,48 +3,86 @@ from sqlalchemy.orm import Session
 from apps.api.database import SessionLocal
 from apps.api.models import PullRequest
 import logging
+from apps.api.services.static_analysis import StaticAnalyzer
+from apps.api.services.github_api import GitHubAPIClient
 
 logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, max_retries=3)
-def review_pull_request(self, pr_github_id: int):
-    """
-    Background task to review a pull request
-    
-    Args:
-        pr_github_id: GitHub ID of the PR to review
-        self: Celery task instance (for retries)
-    """
+async def review_pull_request(self, pr_github_id: int):
+    """Enhanced background task to review a pull request"""
     try:
-        # get database session
+        # Get database session
         db = SessionLocal()
-
-        # find the pull request
-        pr = db.query(PullRequest).filter(PullRequest.github_id == pr_github_id).first()
-        if not pr: 
-            logger.error(f"PR {pr_github_id} not found")
-            return {"status": "error", "message": f"PR {pr_github_id} not found"}
         
-        logger.info(f"Starting to review PR #{pr.pr_number} from {pr.repo_name}")
+        # Find the PR
+        pr = db.query(PullRequest).filter(
+            PullRequest.github_id == pr_github_id
+        ).first()
         
-        #TODO: Implement the actual review logic here
-        #1. Fetch PR from GitHub
-        #2. Analyze the code with AI
-        #3. Store the findings in the database
-        #4. Send notifications to the maintainer
-
-        logger.info(f"Review completed for PR #{pr.pr_number} from {pr.repo_name}")
-        return {"status": "success", "message": f"Review completed for PR #{pr.pr_number} from {pr.repo_name}"}
-    
+        if not pr:
+            logger.error(f"PR {pr_github_id} not found in database")
+            return {"status": "error", "message": "PR not found"}
+        
+        logger.info(f"Starting comprehensive review for PR #{pr.pr_number}")
+        
+        # Initialize services
+        github_client = GitHubAPIClient()
+        analyzer = StaticAnalyzer()
+        
+        # 1. Fetch PR details from GitHub
+        pr_details = await github_client.get_pull_request(
+            owner=pr.repo_name.split('/')[0],
+            repo=pr.repo_name.split('/')[1],
+            pr_number=pr.pr_number
+        )
+        
+        # 2. Get changed files
+        changed_files = await github_client.get_pull_request_files(
+            owner=pr.repo_name.split('/')[0],
+            repo=pr.repo_name.split('/')[1],
+            pr_number=pr.pr_number
+        )
+        
+        # 3. Run static analysis on each file
+        all_findings = []
+        for file_info in changed_files:
+            if file_info['status'] in ['added', 'modified']:
+                findings = await analyzer.analyze_file(
+                    file_info['filename'],
+                    file_info.get('patch', '')
+                )
+                all_findings.extend(findings)
+        
+        # 4. Generate review comments
+        review_comments = self._generate_review_comments(all_findings)
+        
+        # 5. Post comments to GitHub
+        if review_comments:
+            await github_client.post_review_comment(
+                owner=pr.repo_name.split('/')[0],
+                repo=pr.repo_name.split('/')[1],
+                pr_number=pr.pr_number,
+                comments=review_comments
+            )
+        
+        logger.info(f"Review completed for PR #{pr.pr_number} - {len(all_findings)} findings")
+        return {
+            "status": "success", 
+            "pr_number": pr.pr_number,
+            "findings_count": len(all_findings)
+        }
+        
     except Exception as exc:
-        logger.error(f"Error reviewing PR {pr_github_id}: {str(exc)}", exc_info=True)
-        
-        #retry the task
+        logger.error(f"Error reviewing PR {pr_github_id}: {exc}")
         if self.request.retries < self.max_retries:
-            logger.info(f"Retrying task for PR {pr_github_id} (attempt {self.request.retries + 1}/{self.max_retries})")
-            raise self.retry(countdown=60, exc=exc) #wait 60 seconds before retrying
-        
-        return {"status": "error", "message": f"Error reviewing PR {pr_github_id}: {str(exc)}"}
+            raise self.retry(countdown=60, exc=exc)
+        return {"status": "error", "message": str(exc)}
     
     finally:
         db.close()
+
+def _generate_review_comments(self, findings: List[Dict]) -> List[Dict]:
+    """Convert findings into GitHub review comments"""
+    # Implementation will go here
+    pass
