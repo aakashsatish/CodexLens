@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from apps.api.database import get_db
 from apps.api.models import PullRequest
 from apps.api.services.github import GitHubWebhookVerifier
+from apps.worker.tasks import review_pull_request
 
 # Load environment variables
 load_dotenv('infra/.env')
@@ -62,6 +63,8 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
             print(f"Updated PR #{pr_data['number']} from {payload['repository']['full_name']}")
         
         db.commit()
-        return {"status": "PR processed and stored"}
+        if payload['action'] in ['opened', 'synchronize']:
+            review_pull_request.delay(pr_data['id'])
+        return {"status": "PR processed and review task scheduled"}
     
     return {"status": "webhook received"}
