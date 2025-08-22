@@ -34,10 +34,11 @@ class Finding(Base):
     __tablename__ = "findings"
     
     id = Column(Integer, primary_key=True, index=True)
-    pr_github_id = Column(BigInteger, index=True)  # Changed to BigInteger
-    tool = Column(String(100))
-    severity = Column(String(50))
-    message = Column(Text)
-    path = Column(String(500))
-    line = Column(Integer)
-    created_at = Column(DateTime, default=func.now())
+    pr_github_id = Column(BigInteger, index=True)  # GitHub PR ID
+    tool = Column(String)  # ruff, bandit, semgrep
+    severity = Column(String)  # error, warning, info
+    path = Column(String)  # file path
+    line = Column(Integer)  # line number
+    message = Column(String)  # error message
+    code = Column(String)  # error code (e.g., F401, B105)
+    created_at = Column(DateTime, default=datetime.utcnow)
