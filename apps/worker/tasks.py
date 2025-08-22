@@ -88,14 +88,20 @@ def review_pull_request(self, pr_id: int, repo_name: str, pr_number: int, instal
 
             print(f"🤖 Generated {len(review_comments)} AI review comments")
 
-            # TODO: Post comments to GitHub (next step)
-            # if review_comments:
-            #     await github_client.post_review_comment(
-            #         owner=owner,
-            #         repo=repo,
-            #         pr_number=pr_number,
-            #         comments=review_comments
-            #     )
+            if review_comments:
+                try: 
+                    result = loop.run_until_complete(
+                        github_client.post_review_comment(
+                            owner=owner,
+                            repo=repo,
+                            pr_number=pr_number,
+                            comments=review_comments,
+                            installation_id=installation_id
+                        )
+                    )
+                    print(f"📝 Posted {result['comments_posted']} comments to GitHub PR")
+                except Exception as e:
+                    print(f"❌ Error posting comments: {e}")
 
             print(f"✅ Review completed for PR {pr_number} in {repo_name}")
 

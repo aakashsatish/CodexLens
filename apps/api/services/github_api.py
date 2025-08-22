@@ -154,7 +154,40 @@ class GitHubAPIClient:
         
         
     async def post_review_comment(self, owner: str, repo: str, pr_number: int, 
-                                 comments: List[Dict]) -> Dict:
+                             comments: List[Dict], installation_id: int) -> Dict:
         """Post review comments to pull request"""
-        # Implementation will go here
-        pass
+        try:
+            # Get installation token
+            token = await self._get_installation_token(installation_id)
+            
+            headers = {
+                'Authorization': f'token {token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            
+            # Post each comment
+            posted_comments = []
+            for comment in comments:
+                comment_data = {
+                    'body': comment['body'],
+                    'path': comment['path'],
+                    'line': comment['line']
+                }
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}/comments",
+                        headers=headers,
+                        json=comment_data
+                    )
+                    response.raise_for_status()
+                    
+                    posted_comments.append(response.json())
+                    logger.info(f"Posted comment on {comment['path']}:{comment['line']}")
+            
+            logger.info(f"Successfully posted {len(posted_comments)} comments to PR #{pr_number}")
+            return {"status": "success", "comments_posted": len(posted_comments)}
+            
+        except Exception as e:
+            logger.error(f"Error posting review comments: {e}")
+            raise
