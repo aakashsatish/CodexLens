@@ -130,6 +130,27 @@ class GitHubAPIClient:
         except Exception as e:
             logger.error(f"Error getting pull request files for PR #{pr_number} in {owner}/{repo}: {e}")
             raise
+
+    async def get_file_content(self, file_url: str, installation_id: int) -> str:
+        """Get the content of a file from GitHub"""
+        try:
+            # Get installation token
+            token  = await self._get_installation_token(installation_id)
+            
+            # Make request to get file content
+            headers = {
+                'Authorization': f'token {token}',
+                'Accept': 'application/vnd.github.v3.raw'
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(file_url, headers=headers)
+                response.raise_for_status()
+                return response.text
+                
+        except Exception as e:
+            logger.error(f"Error getting file content: {e}")
+            raise
         
         
     async def post_review_comment(self, owner: str, repo: str, pr_number: int, 

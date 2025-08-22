@@ -1,85 +1,99 @@
 from apps.worker.celery_app import celery_app
 from sqlalchemy.orm import Session
 from apps.api.database import SessionLocal
-from apps.api.models import PullRequest
+from apps.api.models import PullRequest, Finding
 from apps.api.services.github_api import GitHubAPIClient
 from apps.api.services.static_analysis import StaticAnalyzer
 from typing import List, Dict
 import logging
+import asyncio 
 
 logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, max_retries=3)
-async def review_pull_request(self, pr_github_id: int):
-    """Enhanced background task to review a pull request"""
+def review_pull_request(self, pr_id: int, repo_name: str, pr_number: int, installation_id: int):
+    """
+    Review pull request using static analysis and AI-based analysis.
+    """
     try:
         # Get database session
         db = SessionLocal()
-        
-        # Find the PR
-        pr = db.query(PullRequest).filter(
-            PullRequest.github_id == pr_github_id
-        ).first()
-        
-        if not pr:
-            logger.error(f"PR {pr_github_id} not found in database")
-            return {"status": "error", "message": "PR not found"}
-        
-        logger.info(f"Starting comprehensive review for PR #{pr.pr_number}")
-        
-        # Initialize services
+
+        print(f"Reviewing PR {pr_number} in {repo_name}")
+
+        # Parse repo name into owner and repo
+        owner, repo = repo_name.split('/', 1)
+
+        # Initialize GitHub client
         github_client = GitHubAPIClient()
-        analyzer = StaticAnalyzer()
-        
-        # 1. Fetch PR details from GitHub
-        pr_details = await github_client.get_pull_request(
-            owner=pr.repo_name.split('/')[0],
-            repo=pr.repo_name.split('/')[1],
-            pr_number=pr.pr_number
-        )
-        
-        # 2. Get changed files
-        changed_files = await github_client.get_pull_request_files(
-            owner=pr.repo_name.split('/')[0],
-            repo=pr.repo_name.split('/')[1],
-            pr_number=pr.pr_number
-        )
-        
-        # 3. Run static analysis on each file
-        all_findings = []
-        for file_info in changed_files:
-            if file_info['status'] in ['added', 'modified']:
-                findings = await analyzer.analyze_file(
-                    file_info['filename'],
-                    file_info.get('patch', '')
-                )
-                all_findings.extend(findings)
-        
-        # 4. Generate review comments
-        review_comments = self._generate_review_comments(all_findings)
-        
-        # 5. Post comments to GitHub
-        if review_comments:
-            await github_client.post_review_comment(
-                owner=pr.repo_name.split('/')[0],
-                repo=pr.repo_name.split('/')[1],
-                pr_number=pr.pr_number,
-                comments=review_comments
+
+        # Create new event loop for async operations
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            pr_details = loop.run_until_complete(
+                github_client.get_pull_request(owner, repo, pr_number, installation_id)
             )
-        
-        logger.info(f"Review completed for PR #{pr.pr_number} - {len(all_findings)} findings")
-        return {
-            "status": "success", 
-            "pr_number": pr.pr_number,
-            "findings_count": len(all_findings)
-        }
-        
+            print(f"PR Title: {pr_details.get('title', 'Unknown')}")
+
+            pr_files = loop.run_until_complete(
+                github_client.get_pull_request_files(owner, repo, pr_number, installation_id)
+            )
+            print(f"Found {len(pr_files)} files to analyze")
+
+            analyzer = StaticAnalyzer()
+            all_findings = []
+
+            for file_info in pr_files:
+                filename = file_info['filename']
+                file_url = file_info['contents_url']
+
+                # Only analyze Python files
+                if filename.endswith('.py'):
+                    print(f"Analyzing {filename}")
+                    
+                    file_content = loop.run_until_complete(
+                        github_client.get_file_content(file_url, installation_id)
+                    )
+
+                    if file_content:
+                        # Run static analysis
+                        findings = analyzer.analyze_file(filename, file_content)
+                        all_findings.extend(findings)
+                        print(f"Found {len(findings)} issues in {filename}")
+
+            print(f"Found {len(all_findings)} issues in total")
+
+            # Store findings in database
+            for finding in all_findings:
+                db_finding = Finding(
+                    pr_github_id=pr_id, 
+                    tool=finding['tool'], 
+                    severity=finding['severity'], 
+                    path=finding['path'],
+                    line=finding['line'],
+                    message=finding['message'],
+                    code=finding['code']
+                )
+                db.add(db_finding)
+            
+            db.commit()
+            print(f"Stored {len(all_findings)} findings in database")
+
+            # TODO: Generate review comments
+            # TODO: Post comments to GitHub
+
+            print(f"Review completed for PR {pr_number} in {repo_name}")
+
+        finally:
+            loop.close()
+
     except Exception as exc:
-        logger.error(f"Error reviewing PR {pr_github_id}: {exc}")
-        if self.request.retries < self.max_retries:
-            raise self.retry(countdown=60, exc=exc)
-        return {"status": "error", "message": str(exc)}
-    
+        print(f"Error reviewing PR {pr_number} in {repo_name}: {exc}")
+        db.rollback()
+        raise self.retry(countdown=60, exc=exc)
+
     finally:
         db.close()
 
