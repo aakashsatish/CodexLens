@@ -167,11 +167,11 @@ class GitHubAPIClient:
             
             # Post each comment
             posted_comments = []
-            for comment in comments:
+            for comment in comments:    
                 comment_data = {
                     'body': comment['body'],
                     'path': comment['path'],
-                    'line': comment['line']
+                    'position': comment['line']    
                 }
                 
                 async with httpx.AsyncClient() as client:
@@ -180,8 +180,14 @@ class GitHubAPIClient:
                         headers=headers,
                         json=comment_data
                     )
-                    response.raise_for_status()
                     
+                    if response.status_code == 422:
+                        # Log the error details
+                        error_data = response.json()
+                        logger.error(f"GitHub API error: {error_data}")
+                        continue
+                    
+                    response.raise_for_status()
                     posted_comments.append(response.json())
                     logger.info(f"Posted comment on {comment['path']}:{comment['line']}")
             
