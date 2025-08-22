@@ -165,13 +165,25 @@ class GitHubAPIClient:
                 'Accept': 'application/vnd.github.v3+json'
             }
             
+            # First, get the latest commit SHA for this PR
+            async with httpx.AsyncClient() as client:
+                pr_response = await client.get(
+                    f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}",
+                    headers=headers
+                )
+                pr_response.raise_for_status()
+                pr_data = pr_response.json()
+                commit_id = pr_data['head']['sha']  # Get the latest commit SHA
+            
             # Post each comment
             posted_comments = []
-            for comment in comments:    
+            for comment in comments:
+                # GitHub API expects 'line' and 'commit_id'
                 comment_data = {
                     'body': comment['body'],
                     'path': comment['path'],
-                    'position': comment['line']    
+                    'line': comment['line'],  # Changed back to 'line'
+                    'commit_id': commit_id    # Add the commit SHA
                 }
                 
                 async with httpx.AsyncClient() as client:
