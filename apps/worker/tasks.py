@@ -4,6 +4,7 @@ from apps.api.database import SessionLocal
 from apps.api.models import PullRequest, Finding
 from apps.api.services.github_api import GitHubAPIClient
 from apps.api.services.static_analysis import StaticAnalyzer
+from apps.api.services.ai_review import AIReviewService  # Fixed import path
 from typing import List, Dict
 import logging
 import asyncio 
@@ -77,14 +78,26 @@ def review_pull_request(self, pr_id: int, repo_name: str, pr_number: int, instal
                     code=finding['code']
                 )
                 db.add(db_finding)
-            
+
             db.commit()
             print(f"Stored {len(all_findings)} findings in database")
 
-            # TODO: Generate review comments
-            # TODO: Post comments to GitHub
+            # Generate AI review comments
+            ai_service = AIReviewService()
+            review_comments = ai_service.generate_review_comments(all_findings)
 
-            print(f"Review completed for PR {pr_number} in {repo_name}")
+            print(f"🤖 Generated {len(review_comments)} AI review comments")
+
+            # TODO: Post comments to GitHub (next step)
+            # if review_comments:
+            #     await github_client.post_review_comment(
+            #         owner=owner,
+            #         repo=repo,
+            #         pr_number=pr_number,
+            #         comments=review_comments
+            #     )
+
+            print(f"✅ Review completed for PR {pr_number} in {repo_name}")
 
         finally:
             loop.close()
@@ -96,8 +109,3 @@ def review_pull_request(self, pr_id: int, repo_name: str, pr_number: int, instal
 
     finally:
         db.close()
-
-def _generate_review_comments(self, findings: List[Dict]) -> List[Dict]:
-    """Convert findings into GitHub review comments"""
-    # Implementation will go here
-    pass
