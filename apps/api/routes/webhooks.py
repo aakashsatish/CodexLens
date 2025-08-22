@@ -68,7 +68,13 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
         
         db.commit()
         if payload['action'] in ['opened', 'synchronize']:
-            review_pull_request.delay(pr_data['id'])
+            # Extract the required data from the webhook payload
+            repo_name = f"{pr_data['base']['repo']['owner']['login']}/{pr_data['base']['repo']['name']}"
+            pr_number = pr_data['number']
+            installation_id = payload['installation']['id']
+
+            # Queue review task with all required parameters
+            review_pull_request.delay(pr_data['id'], repo_name, pr_number, installation_id)
         return {"status": "PR processed and review task scheduled"}
     
     return {"status": "webhook received"}
